@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Habit Tracker</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Habits">
+<meta name="theme-color" content="#eef2ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1916" media="(prefers-color-scheme: dark)">
+<style>
+:root{--bg:#eef2ef;--card:#fff;--ink:#16302b;--mute:#5d7068;--line:#d9e2dd;--soft:#e4ebe7;
+--ex:#2f6fde;--med:#7a4fc9;--str:#d9831a;--soc:#d4407a;color-scheme:light}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1916;--card:#172421;--ink:#e6f0ec;--mute:#93a8a0;--line:#26372f;--soft:#1f2f2a;
+--ex:#6d9cf5;--med:#a98af0;--str:#f0a64a;--soc:#ee6f9f;color-scheme:dark}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);
+font:16px/1.4 ui-rounded,"SF Pro Rounded",system-ui,-apple-system,sans-serif}
+body{padding:env(safe-area-inset-top) 0 calc(76px + env(safe-area-inset-bottom))}
+main{max-width:560px;margin:0 auto;padding:14px 14px 0}
+h1{font-size:26px;margin:6px 0 2px;letter-spacing:-.02em}
+h2{font-size:17px;margin:0}
+.sub{color:var(--mute);font-size:14px;margin:0 0 12px}
+.card{background:var(--card);border-radius:18px;padding:14px 14px 14px 18px;margin:0 0 12px;position:relative;overflow:hidden}
+.card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--c,var(--line))}
+.row{display:flex;align-items:center;gap:10px}.sp{justify-content:space-between}
+.big{font-size:40px;font-weight:700;letter-spacing:-.03em;line-height:1;color:var(--c)}
+.unit{color:var(--mute);font-size:14px}
+button,select,input{font:inherit;color:inherit}
+button{border:0;border-radius:12px;background:var(--soft);padding:10px 14px;min-height:44px;cursor:pointer}
+button:active{transform:scale(.97)}
+button.pri{background:var(--c,var(--ink));color:#fff;font-weight:600}
+button.rnd{width:48px;padding:0;font-size:22px}
+button:disabled{opacity:.35}
+select,input[type=text],input[type=number],input[type=date]{background:var(--soft);border:0;border-radius:12px;padding:10px 12px;min-height:44px;width:100%;min-width:0}
+input[type=number]{width:84px;text-align:center;font-size:20px;font-weight:600}
+:focus-visible{outline:3px solid var(--c,var(--ink));outline-offset:2px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chip{background:var(--soft);border-radius:99px;padding:5px 6px 5px 12px;font-size:14px;display:inline-flex;gap:4px;align-items:center}
+.chip b{font-weight:600}
+.chip button{min-height:26px;width:26px;padding:0;border-radius:50%;background:transparent;color:var(--mute);font-size:16px;line-height:1}
+details{margin-top:10px;color:var(--mute);font-size:14px}summary{cursor:pointer;padding:6px 0}
+nav.tabs{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom))}
+nav.tabs button{flex:1;background:none;border-radius:12px;color:var(--mute);font-size:13px;padding:8px 0}
+nav.tabs button.on{color:var(--ink);font-weight:700;background:var(--soft)}
+.seg{display:flex;background:var(--soft);border-radius:14px;padding:3px;margin:0 0 14px}
+.seg button{flex:1;background:none;min-height:38px}.seg button.on{background:var(--card);font-weight:700}
+.stats{display:flex;gap:16px;margin:2px 0 8px}.stats div{font-size:13px;color:var(--mute)}
+.stats b{display:block;font-size:20px;color:var(--ink);letter-spacing:-.02em}
+svg{width:100%;height:auto;display:block}.tr{font-size:13px;color:var(--mute);margin:4px 0 0}
+.empty{color:var(--mute);font-size:14px;margin:8px 0 0}
+.datebar{display:flex;gap:8px;align-items:center;margin-bottom:14px}.datebar input{flex:1}
+.stack button{width:100%;margin:0 0 10px;text-align:left}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<nav class="tabs">
+<button data-act="tab" data-v="today">Today</button>
+<button data-act="tab" data-v="trends">Trends</button>
+<button data-act="tab" data-v="data">Data</button>
+</nav>
+<script>
+const CATS=[{k:'ex',n:'Exercise',u:'sessions'},{k:'med',n:'Meditation',u:'minutes'},{k:'str',n:'Stretching',u:'events'},{k:'soc',n:'Socialization',u:'events'}];
+const KEY='habits.v1',$=s=>document.querySelector(s);
+let S;try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+if(!S||!S.days)S={activities:[],days:{}};
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){alert('Could not save. Storage may be full or blocked.')}};
+const pad=n=>String(n).padStart(2,'0');
+const fmt=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const parse=s=>{const[a,b,c]=s.split('-');return new Date(+a,b-1,+c)};
+const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const todayKey=()=>fmt(new Date());
+let view='today',range='week',date=todayKey();
+const wday=k=>S.days[k]||(S.days[k]={ex:[],med:0,str:0,soc:0});
+const val=(k,c)=>{const d=S.days[k];return d?(c==='ex'?(d.ex||[]).length:(d[c]||0)):0};
+
+/* ---------- Today ---------- */
+function renderToday(){
+  const d=S.days[date]||{},ex=d.ex||[],isToday=date>=todayKey();
+  const label=parse(date).toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'});
+  const counter=(c)=>`<div class="card" style="--c:var(--${c.k})"><div class="row sp">
+    <div><h2>${c.n}</h2><div class="unit">events today</div></div>
+    <div class="row"><button class="rnd" data-act="dec" data-c="${c.k}" aria-label="Remove one">−</button>
+    <span class="big" style="min-width:44px;text-align:center">${val(date,c.k)}</span>
+    <button class="rnd pri" data-act="inc" data-c="${c.k}" aria-label="Add one">+</button></div></div></div>`;
+  $('#app').innerHTML=`<h1>${isToday?'Today':'Log'}</h1><p class="sub">${label}</p>
+  <div class="datebar"><button data-act="prev" aria-label="Previous day">‹</button>
+  <input type="date" id="dp" value="${date}" max="${todayKey()}" aria-label="Date">
+  <button data-act="next" ${isToday?'disabled':''} aria-label="Next day">›</button></div>
+  <div class="card" style="--c:var(--ex)"><div class="row sp"><div><h2>Exercise</h2><div class="unit">${ex.length} logged</div></div>
+    <span class="big">${ex.length}</span></div>
+    <div class="row" style="margin-top:12px">${S.activities.length?
+      `<select id="sel" aria-label="Activity">${S.activities.map(a=>`<option>${esc(a)}</option>`).join('')}</select>
+       <button class="pri" data-act="log">Log</button>`:`<span class="empty" style="margin:0">Add an activity below to start logging.</span>`}</div>
+    ${ex.length?`<div class="chips">${ex.map((a,i)=>`<span class="chip">${esc(a)}<button data-act="unlog" data-i="${i}" aria-label="Remove ${esc(a)}">×</button></span>`).join('')}</div>`:''}
+    <details ${S.activities.length?'':'open'}><summary>Manage activities</summary>
+      <div class="row"><input type="text" id="newact" placeholder="e.g. running" maxlength="40" autocapitalize="none"><button data-act="addact">Add</button></div>
+      <div class="chips">${S.activities.map((a,i)=>`<span class="chip">${esc(a)}<button data-act="delact" data-i="${i}" aria-label="Delete ${esc(a)}">×</button></span>`).join('')}</div>
+    </details></div>
+  <div class="card" style="--c:var(--med)"><div class="row sp"><div><h2>Meditation</h2><div class="unit">minutes today</div></div>
+    <div class="row"><input type="number" inputmode="numeric" min="0" id="med" value="${val(date,'med')}" aria-label="Minutes"></div></div>
+    <div class="row" style="margin-top:10px"><button data-act="medadd" data-n="-5">−5</button><button data-act="medadd" data-n="5">+5</button><button data-act="medadd" data-n="10">+10</button><button data-act="medadd" data-n="20">+20</button></div></div>
+  ${counter(CATS[2])}${counter(CATS[3])}`;
+}
+
+/* ---------- Trends ---------- */
+function buckets(r,off){
+  const t=new Date();t.setHours(0,0,0,0);const out=[];
+  if(r==='year'){for(let i=11;i>=0;i--){const m=new Date(t.getFullYear(),t.getMonth()-i-12*off,1);
+    out.push({label:m.toLocaleDateString(undefined,{month:'short'}),prefix:`${m.getFullYear()}-${pad(m.getMonth()+1)}`,days:new Date(m.getFullYear(),m.getMonth()+1,0).getDate()})}}
+  else{const n=r==='week'?7:30;for(let i=n-1;i>=0;i--){const d=addDays(t,-i-n*off);
+    out.push({label:r==='week'?d.toLocaleDateString(undefined,{weekday:'short'}):String(d.getDate()),prefix:fmt(d),days:1})}}
+  return out}
+const bval=(b,c)=>Object.keys(S.days).filter(k=>k.startsWith(b.prefix)).reduce((s,k)=>s+val(k,c),0);
+function regress(v){const n=v.length,mx=(n-1)/2,my=v.reduce((a,b)=>a+b,0)/n;let nu=0,de=0;
+  v.forEach((y,i)=>{nu+=(i-mx)*(y-my);de+=(i-mx)**2});const m=de?nu/de:0;return{m,b:my-m*mx,my}}
+function chart(bs,v,c){
+  const W=340,H=150,L=30,R=6,T=10,B=22,n=v.length,max=Math.max(1,Math.ceil(Math.max(...v))),pw=W-L-R,ph=H-T-B,bw=pw/n;
+  const y=q=>T+ph-(q/max)*ph,r=regress(v);
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Chart">`;
+  [0,max/2,max].forEach(q=>{s+=`<line x1="${L}" x2="${W-R}" y1="${y(q)}" y2="${y(q)}" stroke="var(--line)"/><text x="${L-5}" y="${y(q)+3}" font-size="9" text-anchor="end" fill="var(--mute)">${Math.round(q*10)/10}</text>`});
+  v.forEach((q,i)=>{const h=(q/max)*ph;if(h>0)s+=`<rect x="${L+i*bw+bw*.15}" y="${y(q)}" width="${bw*.7}" height="${h}" rx="${Math.min(3,bw*.3)}" style="fill:var(--${c});opacity:.85"/>`;
+    if(n<=12||i%5===4||i===0)s+=`<text x="${L+i*bw+bw/2}" y="${H-7}" font-size="9" text-anchor="middle" fill="var(--mute)">${bs[i].label}</text>`});
+  const cl=q=>Math.max(0,Math.min(max,q));
+  s+=`<line x1="${L+bw/2}" x2="${L+(n-.5)*bw}" y1="${y(cl(r.b))}" y2="${y(cl(r.b+r.m*(n-1)))}" stroke="var(--ink)" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="round"/></svg>`;
+  return s}
+function renderTrends(){
+  const unitWord={week:'last 7 days',month:'last 30 days',year:'last 12 months'}[range];
+  const cards=CATS.map(c=>{
+    const bs=buckets(range,0),v=bs.map(b=>bval(b,c.k)),total=v.reduce((a,b)=>a+b,0);
+    const prev=buckets(range,1).reduce((s,b)=>s+bval(b,c.k),0),days=bs.reduce((s,b)=>s+b.days,0);
+    const r=regress(v),rel=r.my?r.m*(v.length-1)/r.my:0;
+    const trend=!total?'No entries in this period yet.':rel>.15?'Trending up':rel<-.15?'Trending down':'Holding steady';
+    const diff=total-prev,dTxt=prev||total?`${diff>0?'+':''}${Math.round(diff*10)/10} vs previous`:'—';
+    let extra='';
+    if(c.k==='ex'&&total){const t={};bs.forEach(b=>Object.keys(S.days).filter(k=>k.startsWith(b.prefix)).forEach(k=>(S.days[k].ex||[]).forEach(a=>t[a]=(t[a]||0)+1)));
+      extra=`<div class="chips">${Object.entries(t).sort((a,b)=>b[1]-a[1]).map(([a,n])=>`<span class="chip">${esc(a)} <b>${n}</b></span>`).join('')}</div>`}
+    return `<div class="card" style="--c:var(--${c.k})"><h2>${c.n}</h2>
+    <div class="stats"><div><b>${Math.round(total*10)/10}</b>${c.u}</div><div><b>${(total/days).toFixed(1)}</b>per day</div><div><b style="font-size:16px;margin-top:4px">${dTxt}</b>${range==='year'?'last year':'prior period'}</div></div>
+    ${chart(bs,v,c.k)}<p class="tr">${trend} · dashed line is the trend</p>${extra}</div>`}).join('');
+  $('#app').innerHTML=`<h1>Trends</h1><p class="sub">${unitWord}</p>
+  <div class="seg">${['week','month','year'].map(r=>`<button data-act="range" data-r="${r}" class="${r===range?'on':''}">${r[0].toUpperCase()+r.slice(1)}</button>`).join('')}</div>${cards}`}
+
+/* ---------- Data ---------- */
+function renderData(){
+  const n=Object.keys(S.days).filter(k=>CATS.some(c=>val(k,c.k))).length;
+  $('#app').innerHTML=`<h1>Data</h1><p class="sub">${n} day${n===1?'':'s'} logged. Everything is stored on this device only.</p>
+  <div class="card stack" style="--c:var(--ink)"><h2 style="margin-bottom:10px">Export</h2>
+  <button data-act="csv1">Daily summary (CSV)</button><button data-act="csv2">Exercise log, one row per session (CSV)</button><button data-act="json">Full backup (JSON)</button></div>
+  <div class="card stack" style="--c:var(--ink)"><h2 style="margin-bottom:10px">Restore</h2>
+  <input type="file" id="imp" accept="application/json,.json" style="display:none"><button data-act="imp">Restore from backup…</button>
+  <button data-act="reset" style="color:#c0392b">Delete all data…</button></div>`}
+const q=s=>`"${String(s).replace(/"/g,'""')}"`;
+async function out(name,text,type){
+  const f=new File([text],name,{type});
+  if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f]});return}catch(e){if(e.name==='AbortError')return}}
+  const a=document.createElement('a');a.href=URL.createObjectURL(f);a.download=name;document.body.append(a);a.click();a.remove()}
+const keys=()=>Object.keys(S.days).sort();
+function csvDaily(){return['date,exercise_sessions,exercise_activities,meditation_minutes,stretching_events,socialization_events',
+  ...keys().map(k=>{const d=S.days[k];return[k,val(k,'ex'),q((d.ex||[]).join('; ')),val(k,'med'),val(k,'str'),val(k,'soc')].join(',')})].join('\n')}
+function csvEx(){return['date,activity',...keys().flatMap(k=>(S.days[k].ex||[]).map(a=>`${k},${q(a)}`))].join('\n')}
+
+/* ---------- Events ---------- */
+function render(){
+  document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.v===view));
+  ({today:renderToday,trends:renderTrends,data:renderData})[view]();window.scrollTo(0,0)}
+const keep=fn=>{const y=scrollY;fn();render();scrollTo(0,y)};
+document.addEventListener('click',e=>{
+  const el=e.target.closest('[data-act]');if(!el)return;const a=el.dataset.act,D=el.dataset;
+  if(a==='tab'){view=D.v;return render()}
+  if(a==='range'){range=D.r;return render()}
+  if(a==='prev'||a==='next'){date=fmt(addDays(parse(date),a==='prev'?-1:1));if(date>todayKey())date=todayKey();return render()}
+  if(a==='addact'){const i=$('#newact'),v=i.value.trim();if(!v)return;
+    if(!S.activities.some(x=>x.toLowerCase()===v.toLowerCase()))S.activities.push(v);save();return keep(()=>{})}
+  if(a==='delact'){if(confirm(`Remove "${S.activities[D.i]}" from your list? Past logs are kept.`)){S.activities.splice(D.i,1);save();keep(()=>{})}return}
+  if(a==='log'){const v=$('#sel').value;if(v){wday(date).ex.push(v);save();keep(()=>{})}return}
+  if(a==='unlog'){wday(date).ex.splice(D.i,1);save();return keep(()=>{})}
+  if(a==='inc'||a==='dec'){const d=wday(date);d[D.c]=Math.max(0,(d[D.c]||0)+(a==='inc'?1:-1));save();return keep(()=>{})}
+  if(a==='medadd'){const d=wday(date);d.med=Math.max(0,(d.med||0)+ +D.n);save();return keep(()=>{})}
+  if(a==='csv1')return out('habits-daily.csv',csvDaily(),'text/csv');
+  if(a==='csv2')return out('habits-exercise-log.csv',csvEx(),'text/csv');
+  if(a==='json')return out('habits-backup.json',JSON.stringify(S,null,1),'application/json');
+  if(a==='imp')return $('#imp').click();
+  if(a==='reset'&&confirm('Delete ALL habit data on this device? Export a backup first if unsure.')){S={activities:[],days:{}};save();render()}
+});
+document.addEventListener('change',e=>{
+  const t=e.target;
+  if(t.id==='dp'&&t.value){date=t.value>todayKey()?todayKey():t.value;render()}
+  if(t.id==='med'){wday(date).med=Math.max(0,Math.round(+t.value)||0);save();keep(()=>{})}
+  if(t.id==='imp'&&t.files[0]){const r=new FileReader();r.onload=()=>{try{const j=JSON.parse(r.result);
+    if(!j.days||!Array.isArray(j.activities))throw 0;if(confirm('Replace current data with this backup?')){S=j;save();render()}}catch(_){alert('That file is not a valid backup.')}};r.readAsText(t.files[0])}
+});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='newact')document.querySelector('[data-act=addact]').click()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&view==='today'&&date!==todayKey()&&!S.days[date])render()});
+if('serviceWorker'in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+render();
+</script>
+</body>
+</html>
