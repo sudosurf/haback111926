@@ -54,6 +54,8 @@ svg{width:100%;height:auto;display:block}.tr{font-size:13px;color:var(--mute);ma
 .empty{color:var(--mute);font-size:14px;margin:8px 0 0}
 .datebar{display:flex;gap:8px;align-items:center;margin-bottom:14px}.datebar input{flex:1}
 .stack button{width:100%;margin:0 0 10px;text-align:left}
+.form{display:grid;gap:10px;margin-top:12px}.erow{padding:6px 0;border-top:1px solid var(--line)}.erow .unit{word-break:break-word}
+.x{min-height:36px;width:36px;padding:0;background:transparent;color:var(--mute);font-size:20px;flex:none}
 </style>
 </head>
 <body>
@@ -61,13 +63,15 @@ svg{width:100%;height:auto;display:block}.tr{font-size:13px;color:var(--mute);ma
 <nav class="tabs">
 <button data-act="tab" data-v="today">Today</button>
 <button data-act="tab" data-v="trends">Trends</button>
+<button data-act="tab" data-v="limits">Limits</button>
 <button data-act="tab" data-v="data">Data</button>
 </nav>
 <script>
 const CATS=[{k:'ex',n:'Exercise',u:'sessions'},{k:'med',n:'Meditation',u:'minutes'},{k:'str',n:'Stretching',u:'events'},{k:'soc',n:'Socialization',u:'events'}];
 const KEY='habits.v1',$=s=>document.querySelector(s);
 let S;try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
-if(!S||!S.days)S={activities:[],days:{}};
+const norm=o=>{o.limits=o.limits||{cats:[],entries:[]};o.tomb=o.tomb||{};o.lt=o.lt||0;return o};
+S=norm(S&&S.days?S:{activities:[],days:{}});
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){alert('Could not save. Storage may be full or blocked.')}};
 const pad=n=>String(n).padStart(2,'0');
 const fmt=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -76,7 +80,7 @@ const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const todayKey=()=>fmt(new Date());
 let view='today',range='week',date=todayKey();
-const wday=k=>S.days[k]||(S.days[k]={ex:[],med:0,str:0,soc:0});
+const wday=k=>{const d=S.days[k]||(S.days[k]={ex:[],med:0,str:0,soc:0});d.t=Date.now();return d};
 const val=(k,c)=>{const d=S.days[k];return d?(c==='ex'?(d.ex||[]).length:(d[c]||0)):0};
 
 /* ---------- Today ---------- */
@@ -149,9 +153,9 @@ function renderTrends(){
 /* ---------- Data ---------- */
 function renderData(){
   const n=Object.keys(S.days).filter(k=>CATS.some(c=>val(k,c.k))).length;
-  $('#app').innerHTML=`<h1>Data</h1><p class="sub">${n} day${n===1?'':'s'} logged. Everything is stored on this device only.</p>
+  $('#app').innerHTML=`<h1>Data</h1><p class="sub">${n} day${n===1?'':'s'} logged. Data is stored on this device. Sync with Google Drive to back it up or share it across devices.</p>${driveCard()}
   <div class="card stack" style="--c:var(--ink)"><h2 style="margin-bottom:10px">Export</h2>
-  <button data-act="csv1">Daily summary (CSV)</button><button data-act="csv2">Exercise log, one row per session (CSV)</button><button data-act="json">Full backup (JSON)</button></div>
+  <button data-act="csv1">Daily summary (CSV)</button><button data-act="csv2">Exercise log, one row per session (CSV)</button><button data-act="csv3">Limits log (CSV)</button><button data-act="json">Full backup (JSON)</button></div>
   <div class="card stack" style="--c:var(--ink)"><h2 style="margin-bottom:10px">Restore</h2>
   <input type="file" id="imp" accept="application/json,.json" style="display:none"><button data-act="imp">Restore from backup…</button>
   <button data-act="reset" style="color:#c0392b">Delete all data…</button></div>`}
@@ -165,10 +169,75 @@ function csvDaily(){return['date,exercise_sessions,exercise_activities,meditatio
   ...keys().map(k=>{const d=S.days[k];return[k,val(k,'ex'),q((d.ex||[]).join('; ')),val(k,'med'),val(k,'str'),val(k,'soc')].join(',')})].join('\n')}
 function csvEx(){return['date,activity',...keys().flatMap(k=>(S.days[k].ex||[]).map(a=>`${k},${q(a)}`))].join('\n')}
 
+/* ---------- Limits ---------- */
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+let limCat='',limDate=todayKey();
+const pretty=k=>parse(k).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+function renderLimits(){
+  const cs=S.limits.cats;if(!cs.some(c=>c.id===limCat))limCat=cs[0]?cs[0].id:'';
+  const t=new Date();t.setHours(0,0,0,0);const d7=fmt(addDays(t,-6)),d30=fmt(addDays(t,-29));
+  const row=e=>`<div class="row sp erow"><div><b>${pretty(e.date)}</b>${e.note?`<div class="unit">${esc(e.note)}</div>`:''}</div><button class="x" data-act="delentry" data-id="${e.id}" aria-label="Delete entry">×</button></div>`;
+  const cards=cs.map((c,i)=>{const es=S.limits.entries.filter(e=>e.cat===c.id).sort((a,b)=>b.date.localeCompare(a.date)||b.t-a.t);
+    return `<div class="card" style="--c:hsl(${(i*57+20)%360} 55% 48%)"><div class="row sp"><h2>${esc(c.name)}</h2><span class="big">${es.filter(e=>e.date>=d7).length}</span></div>
+    <div class="unit">last 7 days · ${es.filter(e=>e.date>=d30).length} in 30 days · ${es.length} total</div>
+    ${es.slice(0,5).map(row).join('')||'<p class="empty">No entries yet.</p>'}
+    ${es.length>5?`<details><summary>Show ${es.length-5} older</summary>${es.slice(5).map(row).join('')}</details>`:''}
+    <details><summary>Category options</summary><button data-act="delcat" data-id="${c.id}" style="color:#c0392b">Delete category</button></details></div>`}).join('');
+  $('#app').innerHTML=`<h1>Limits</h1><p class="sub">Things you're keeping an eye on or cutting back.</p>
+  <div class="card" style="--c:var(--ink)"><h2>New category</h2><div class="row" style="margin-top:10px"><input type="text" id="nc" placeholder="e.g. alcohol, sweets" maxlength="40"><button data-act="addcat">Add</button></div></div>
+  ${cs.length?`<div class="card" style="--c:var(--ink)"><h2>Log an entry</h2><div class="form">
+    <select id="lc" aria-label="Category">${cs.map(c=>`<option value="${c.id}" ${c.id===limCat?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
+    <input type="date" id="ld" value="${limDate}" max="${todayKey()}" aria-label="Day">
+    <input type="text" id="ln" placeholder="Notes (optional)" maxlength="300">
+    <button class="pri" data-act="addentry">Add entry</button></div></div>${cards}`:'<p class="empty">Add a category above to start logging.</p>'}`}
+const csvLim=()=>['date,category,note',...[...S.limits.entries].sort((a,b)=>a.date.localeCompare(b.date)).map(e=>{const c=S.limits.cats.find(c=>c.id===e.cat);return`${e.date},${q(c?c.name:'')},${q(e.note||'')}`})].join('\n');
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='nc')document.querySelector('[data-act=addcat]').click()});
+
+/* ---------- Google Drive sync ---------- */
+let cfg={};try{cfg=JSON.parse(localStorage.getItem('habits.cfg'))||{}}catch(e){}
+const saveCfg=()=>{try{localStorage.setItem('habits.cfg',JSON.stringify(cfg))}catch(e){}};
+let tok=null,tokExp=0,msg='';
+const setMsg=m=>{msg=m;const el=$('#sm');if(el)el.textContent=m};
+function driveCard(){if(cfg.cid)loadGIS().catch(()=>{});
+  const st=msg||(cfg.last?'Last synced '+new Date(cfg.last).toLocaleString([],{dateStyle:'medium',timeStyle:'short'}):'Not synced yet.');
+  return `<div class="card stack" style="--c:var(--ex)"><h2 style="margin-bottom:10px">Google Drive</h2>
+  <input type="text" id="cid" placeholder="Google OAuth client ID" value="${esc(cfg.cid||'')}" autocapitalize="none" autocorrect="off" style="margin-bottom:10px">
+  <button class="pri" data-act="sync">Sync with Drive</button><p class="unit" id="sm" style="margin:0">${esc(st)}</p></div>`}
+const loadGIS=()=>window.google&&google.accounts?Promise.resolve():new Promise((res,rej)=>{const e=document.createElement('script');e.src='https://accounts.google.com/gsi/client';e.onload=res;e.onerror=()=>rej(new Error('Could not load Google sign-in. Check your connection.'));document.head.append(e)});
+async function getToken(){
+  if(tok&&Date.now()<tokExp)return tok;
+  await loadGIS();
+  return new Promise((res,rej)=>google.accounts.oauth2.initTokenClient({client_id:cfg.cid,scope:'https://www.googleapis.com/auth/drive.file',
+    callback:r=>{if(r.error)return rej(new Error(r.error_description||r.error));tok=r.access_token;tokExp=Date.now()+(r.expires_in-60)*1000;res(tok)},
+    error_callback:e=>rej(new Error(e.type==='popup_closed'?'Sign-in was cancelled.':'Sign-in failed ('+(e.type||'unknown')+').'))}).requestAccessToken());
+}
+const api=async(u,o={})=>{const r=await fetch(u,{...o,headers:{Authorization:'Bearer '+tok,...(o.headers||{})}});if(!r.ok)throw new Error('Drive error '+r.status);return r};
+function merge(a,b){
+  const o={activities:[],days:{},limits:{cats:[],entries:[]},tomb:{},lt:Math.max(a.lt||0,b.lt||0)};
+  [a,b].forEach(x=>Object.entries(x.tomb||{}).forEach(([k,v])=>o.tomb[k]=Math.max(o.tomb[k]||0,v)));
+  o.activities=[...(((a.lt||0)>=(b.lt||0)?a:b).activities||[])];
+  new Set([...Object.keys(a.days),...Object.keys(b.days)]).forEach(k=>{const x=a.days[k],y=b.days[k];o.days[k]=!y||(x&&(x.t||0)>=(y.t||0))?x:y});
+  ['cats','entries'].forEach(f=>{const m={};[...b.limits[f],...a.limits[f]].forEach(i=>{if(!o.tomb[i.id])m[i.id]=i});o.limits[f]=Object.values(m)});
+  o.limits.entries=o.limits.entries.filter(e=>o.limits.cats.some(c=>c.id===e.cat));
+  return o}
+async function sync(){
+  if(!cfg.cid)return setMsg('Paste your Google client ID first.');
+  setMsg('Signing in…');
+  try{await getToken();setMsg('Syncing…');const FN='habit-tracker-data.json';
+    const l=await(await api('https://www.googleapis.com/drive/v3/files?spaces=drive&fields=files(id)&q='+encodeURIComponent(`name='${FN}' and trashed=false`))).json();
+    const id=l.files[0]&&l.files[0].id;
+    if(id){const rem=await(await api(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`)).json();if(rem&&rem.days){S=norm(merge(S,norm(rem)));save()}}
+    const body=JSON.stringify(S);
+    if(id)await api(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`,{method:'PATCH',headers:{'Content-Type':'application/json'},body});
+    else{const b='b'+uid();await api('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{method:'POST',headers:{'Content-Type':'multipart/related; boundary='+b},
+      body:`--${b}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify({name:FN,mimeType:'application/json'})}\r\n--${b}\r\nContent-Type: application/json\r\n\r\n${body}\r\n--${b}--`})}
+    cfg.last=Date.now();saveCfg();msg='';if(view==='data')render()
+  }catch(e){tok=null;setMsg(e.message||'Sync failed.')}}
+
 /* ---------- Events ---------- */
 function render(){
   document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.v===view));
-  ({today:renderToday,trends:renderTrends,data:renderData})[view]();window.scrollTo(0,0)}
+  ({today:renderToday,trends:renderTrends,limits:renderLimits,data:renderData})[view]();window.scrollTo(0,0)}
 const keep=fn=>{const y=scrollY;fn();render();scrollTo(0,y)};
 document.addEventListener('click',e=>{
   const el=e.target.closest('[data-act]');if(!el)return;const a=el.dataset.act,D=el.dataset;
@@ -176,24 +245,35 @@ document.addEventListener('click',e=>{
   if(a==='range'){range=D.r;return render()}
   if(a==='prev'||a==='next'){date=fmt(addDays(parse(date),a==='prev'?-1:1));if(date>todayKey())date=todayKey();return render()}
   if(a==='addact'){const i=$('#newact'),v=i.value.trim();if(!v)return;
-    if(!S.activities.some(x=>x.toLowerCase()===v.toLowerCase()))S.activities.push(v);save();return keep(()=>{})}
-  if(a==='delact'){if(confirm(`Remove "${S.activities[D.i]}" from your list? Past logs are kept.`)){S.activities.splice(D.i,1);save();keep(()=>{})}return}
+    if(!S.activities.some(x=>x.toLowerCase()===v.toLowerCase())){S.activities.push(v);S.lt=Date.now()}save();return keep(()=>{})}
+  if(a==='delact'){if(confirm(`Remove "${S.activities[D.i]}" from your list? Past logs are kept.`)){S.activities.splice(D.i,1);S.lt=Date.now();save();keep(()=>{})}return}
   if(a==='log'){const v=$('#sel').value;if(v){wday(date).ex.push(v);save();keep(()=>{})}return}
   if(a==='unlog'){wday(date).ex.splice(D.i,1);save();return keep(()=>{})}
   if(a==='inc'||a==='dec'){const d=wday(date);d[D.c]=Math.max(0,(d[D.c]||0)+(a==='inc'?1:-1));save();return keep(()=>{})}
   if(a==='medadd'){const d=wday(date);d.med=Math.max(0,(d.med||0)+ +D.n);save();return keep(()=>{})}
+  if(a==='addcat'){const v=$('#nc').value.trim();if(!v)return;const L=S.limits.cats;let c=L.find(x=>x.name.toLowerCase()===v.toLowerCase());
+    if(!c){c={id:uid(),name:v,t:Date.now()};L.push(c);save()}limCat=c.id;return render()}
+  if(a==='addentry'){if(!limCat)return;S.limits.entries.push({id:uid(),cat:limCat,date:limDate||todayKey(),note:$('#ln').value.trim(),t:Date.now()});save();return keep(()=>{})}
+  if(a==='delentry'){S.tomb[D.id]=Date.now();S.limits.entries=S.limits.entries.filter(x=>x.id!==D.id);save();return keep(()=>{})}
+  if(a==='delcat'){if(confirm('Delete this category and all of its entries?')){S.limits.entries.filter(x=>x.cat===D.id).forEach(x=>S.tomb[x.id]=Date.now());S.tomb[D.id]=Date.now();
+    S.limits.entries=S.limits.entries.filter(x=>x.cat!==D.id);S.limits.cats=S.limits.cats.filter(x=>x.id!==D.id);save();render()}return}
+  if(a==='sync')return sync();
+  if(a==='csv3')return out('habits-limits.csv',csvLim(),'text/csv');
   if(a==='csv1')return out('habits-daily.csv',csvDaily(),'text/csv');
   if(a==='csv2')return out('habits-exercise-log.csv',csvEx(),'text/csv');
   if(a==='json')return out('habits-backup.json',JSON.stringify(S,null,1),'application/json');
   if(a==='imp')return $('#imp').click();
-  if(a==='reset'&&confirm('Delete ALL habit data on this device? Export a backup first if unsure.')){S={activities:[],days:{}};save();render()}
+  if(a==='reset'&&confirm('Delete ALL habit data on this device? Export a backup first if unsure.')){S=norm({activities:[],days:{}});save();render()}
 });
 document.addEventListener('change',e=>{
   const t=e.target;
   if(t.id==='dp'&&t.value){date=t.value>todayKey()?todayKey():t.value;render()}
+  if(t.id==='lc')limCat=t.value;
+  if(t.id==='ld')limDate=t.value||todayKey();
+  if(t.id==='cid'){cfg.cid=t.value.trim();saveCfg();if(cfg.cid)loadGIS().catch(()=>{})}
   if(t.id==='med'){wday(date).med=Math.max(0,Math.round(+t.value)||0);save();keep(()=>{})}
   if(t.id==='imp'&&t.files[0]){const r=new FileReader();r.onload=()=>{try{const j=JSON.parse(r.result);
-    if(!j.days||!Array.isArray(j.activities))throw 0;if(confirm('Replace current data with this backup?')){S=j;save();render()}}catch(_){alert('That file is not a valid backup.')}};r.readAsText(t.files[0])}
+    if(!j.days||!Array.isArray(j.activities))throw 0;if(confirm('Replace current data with this backup?')){S=norm(j);save();render()}}catch(_){alert('That file is not a valid backup.')}};r.readAsText(t.files[0])}
 });
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='newact')document.querySelector('[data-act=addact]').click()});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&view==='today'&&date!==todayKey()&&!S.days[date])render()});
